@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synchronoss-parser"
+version = "2.2.0"
+description = "Unified toolbox for Synchronoss / Verizon mobile backup returns (decryption, contacts, media, chat transcripts)."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "Pillow",
+    "openpyxl",
+    "pandas",
+]
+
+[project.scripts]
+full-pipeline = "synchronoss_parser.full_pipeline:main"
+collect-media = "synchronoss_parser.collect_media:main"
+collect-attachments = "synchronoss_parser.collect_attachments:main"
+collect-media-gui = "synchronoss_parser.collect_media_gui:main"
+contacts-to-excel = "synchronoss_parser.contacts_to_excel:main"
+merge-contacts-logs = "synchronoss_parser.merge_contacts_logs:main"
+render-transcripts = "synchronoss_parser.render_transcripts:main"
+toolbox-gui = "synchronoss_parser.toolbox_gui:main"
+attachment-log = "synchronoss_parser.attachment_log:main"
+build-exe = "synchronoss_parser.build_exe:main"
+
+[tool.setuptools]
+packages = ["synchronoss_parser"]
+
+[tool.setuptools.package-data]
+"synchronoss_parser" = ["*.spec"]

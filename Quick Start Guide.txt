@@ -1,0 +1,43 @@
+Synchronoss Unified Toolbox – Quick Start (Windows)
+===================================================
+
+1. Install Python 3.8+ (https://www.python.org/downloads/)
+   Check “Add Python to PATH” during setup.
+
+2. Open a command prompt in this project folder and run:
+
+       pip install -r requirements.txt
+
+3. Double-click:
+
+       Run_Toolbox_GUI.bat
+
+   (Starts the GUI without leaving a command-prompt window open.)
+
+4. In the GUI:
+
+   - Selection.zip  – original (or copied) file from Synchronoss, not unzipped files
+   - Case folder    – where results should be written
+   - GPG Password   – passphrase from the #secure email
+   - Owner name     – optional (e.g. Jane Doe)
+   - Click Run
+
+5. When finished, click Open output folder (or open parsed_output\index.html).
+
+
+GPG4Win (required for decryption)
+---------------------------------
+If gpg is not already installed, the program will detect that when you click
+Run and can assist with installing GPG4Win (via winget). You can also install
+it yourself anytime from:
+
+  https://www.gpg4win.org
+
+  or:
+
+  winget install --id GnuPG.Gpg4win -e --source winget
+
+After a new GPG install, restart the toolbox so it can find gpg.
+
+
+More detail: see User Guide v2.2.0.txt

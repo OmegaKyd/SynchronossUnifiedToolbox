@@ -1,0 +1,20 @@
+Synchronoss Unified Toolbox – User Guide
+========================================
+
+See the full guide:
+
+  User Guide v2.2.0.txt
+
+Quick start (Windows):
+
+  1. pip install -r requirements.txt
+  2. Double-click Run_Toolbox_GUI.bat
+  3. Select Selection.zip, Case folder, GPG password, optional Owner name
+  4. Click Run
+  5. Open parsed_output/index.html when finished
+
+GPG4Win is required for decryption. If it is not installed, the program will
+offer to help install it (via winget) when you click Run. You can also install
+it from https://www.gpg4win.org.
+
+Use the original (or copied) selection.zip from Synchronoss — not unzipped files.

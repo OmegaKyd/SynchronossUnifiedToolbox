@@ -1,0 +1,199 @@
+Synchronoss Unified Toolbox – User Guide
+========================================
+Version 2.2
+
+This toolbox helps investigators process Verizon / Synchronoss mobile backup
+returns into organized, reviewable case data (contacts, chat transcripts with
+attachments, media, call logs, and more).
+
+The original Synchronoss Toolbox was created by Rempstrom (GitHub) for a
+specific case and shared to help others. The Synchronoss Unified Toolbox
+builds on that work to combine the separate workflows into one automatic
+end-to-end pipeline.
+
+
+=================================================================
+REQUIREMENTS (Windows)
+=================================================================
+
+1. Python 3.8 or newer
+   https://www.python.org/downloads/
+   During setup, check “Add Python to PATH”.
+
+2. Python packages (from the project folder):
+
+       pip install -r requirements.txt
+
+   (Pillow, openpyxl, pandas)
+
+3. GPG4Win (for decryption)
+   https://www.gpg4win.org
+   Or install via winget (the GUI can offer this if gpg is missing):
+
+       winget install --id GnuPG.Gpg4win -e --source winget
+
+4. The original selection.zip from Synchronoss and the GPG passphrase
+   from the #secure email (leotransfers / Synchronoss delivery).
+
+
+=================================================================
+HOW TO START THE GUI
+=================================================================
+
+Double-click:
+
+       Run_Toolbox_GUI.bat
+
+This starts the GUI without a lingering command-prompt window.
+
+Alternative (from the project folder that contains synchronoss_parser):
+
+       python -m synchronoss_parser.toolbox_gui
+
+IMPORTANT:
+  Do not run toolbox_gui.py from inside the synchronoss_parser folder in a
+  way that skips the package path. Prefer the .bat file or:
+
+       python -m synchronoss_parser.toolbox_gui
+
+
+=================================================================
+WHAT YOU NEED FROM SYNCHRONOSS
+=================================================================
+
+Typical delivery:
+
+  • Download package (often via leotransfers.com)
+  • #secure email with download password AND a separate GPG passphrase
+  • Inside the download: selection.zip (keep this file as-is)
+
+Use the original (or a copy of) selection.zip — not folders you already
+unzipped yourself.
+
+
+=================================================================
+RUNNING THE PIPELINE (GUI)
+=================================================================
+
+The window is a single form (no tabs).
+
+Fields:
+
+  Selection.zip
+      Browse to the original selection.zip from Synchronoss.
+      Hint: Use the original (or copied) "selection.zip" file provided by
+      Synchronoss - not any of the unzipped files
+
+  Case folder
+      Choose an empty (or new) folder for this case. The pipeline creates:
+
+          Case folder/
+            original_working/   – intermediate decryption & extraction
+            parsed_output/      – final case data (open this)
+
+  GPG Password
+      The decryption passphrase from the #secure email (not the download
+      password, unless they happen to be the same).
+
+  Owner name (optional)
+      Account holder’s display name (e.g. Jane Doe). Shown in transcripts
+      and the call log the same way other contacts are labelled.
+      The owner’s phone number is auto-detected from encrypted filenames.
+
+Click  Run
+
+Progress appears on the status line. When finished:
+  • The progress bar shows complete
+  • An “Open output folder” button appears — opens parsed_output/
+
+
+If gpg is not installed, the GUI offers to run:
+
+       winget install --id GnuPG.Gpg4win -e --source winget
+
+After install completes, you can restart the application from the prompt
+so it can find gpg.
+
+
+=================================================================
+OUTPUT LAYOUT
+=================================================================
+
+Case folder/
+  original_working/          Intermediate work (chain of custody)
+  parsed_output/             Final organized case data
+    index.html               Master list of all chats — open this first
+    conversations/           One folder per chat, each with conversation.html
+    contacts.xlsx
+    Call Log.xlsx
+    Compiled Media/          (if present in the return)
+    Compiled Attachments/    MMS/RCS files (original filenames kept)
+    Compiled Quarantine Files/
+    processing_summary.txt
+
+
+=================================================================
+USING THE TRANSCRIPTS
+=================================================================
+
+Open parsed_output/index.html in a browser.
+
+  • Search chats & message content — finds keywords in titles and message
+    bodies across all conversations
+  • Click a chat to open its conversation.html
+
+Inside a conversation:
+
+  • Search messages
+  • Attachments only — checkbox to show only messages that have attachments
+  • Day headers hide when a filter leaves no messages for that day
+  • Print — print-friendly layout:
+      - Chat details at the top of page 1 (not a sticky overlay)
+      - Footer: chat name on the left, page numbers on the right
+        (turn off browser “Headers and footers” to hide the file path)
+      - Attachments scaled for paper
+
+Contact labels show Name (phone) when a contact is known.
+The owner line in the header uses Owner name when you supplied one.
+
+
+=================================================================
+TIPS
+=================================================================
+
+  • Always verify important findings against the original data.
+  • Prefer a short case folder path (very long Windows paths can still
+    cause issues with some media tools).
+  • Keep original_working/ if you need intermediate files for review;
+    the final product for analysis is under parsed_output/.
+  • Compiled Attachments keep the original attachment filenames.
+  • GPG decryption of large archives can take a long time — leave the
+    window open until the status shows completion.
+
+
+=================================================================
+COMMAND-LINE (OPTIONAL)
+=================================================================
+
+Advanced users can still call modules directly, for example:
+
+       python -m synchronoss_parser.full_pipeline ^
+           --selection path\to\selection.zip ^
+           --output path\to\case_folder ^
+           --passphrase "YOUR_GPG_PASSPHRASE" ^
+           --target-name "Jane Doe"
+
+See module --help for individual tools (collect media, render transcripts,
+etc.). The GUI is the supported path for full case processing.
+
+
+=================================================================
+SUPPORT / DISCLAIMER
+=================================================================
+
+See Disclaimer.txt and LICENSE.txt in the project folder.
+
+This software assists organization and review of Synchronoss returns; it
+does not replace investigative judgment. Trust but verify.
+
+Ω OmegaKyd Ω
