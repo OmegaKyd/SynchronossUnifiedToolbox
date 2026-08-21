@@ -1,5 +1,6 @@
 Synchronoss Unified Toolbox – Quick Start (Windows)
 ===================================================
+Version 3.0.0
 
 1. Install Python 3.8+ (https://www.python.org/downloads/)
    Check “Add Python to PATH” during setup.
@@ -22,6 +23,9 @@ Synchronoss Unified Toolbox – Quick Start (Windows)
    - Owner name     – optional (e.g. Jane Doe)
    - Click Run
 
+   Status shows stages 1/9 through 9/9 (extract → discover payloads → DV logs →
+   decrypt → extract main → contacts → quarantine → media/attachments → index).
+
 5. When finished, click Open output folder (or open parsed_output\index.html).
 
 
@@ -40,4 +44,4 @@ it yourself anytime from:
 After a new GPG install, restart the toolbox so it can find gpg.
 
 
-More detail: see User Guide v2.2.0.txt
+More detail: see User Guide v3.0.0.txt
