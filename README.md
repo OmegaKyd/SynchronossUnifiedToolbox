@@ -6,7 +6,7 @@ Organize Verizon / Synchronoss mobile backup returns into reviewable case data:
 contacts, chat transcripts with attachments, media, call logs, DV access logs,
 unique IPs, and more.
 
-Built using portions of original code by Rempstrom and Alexis Brignoni and unified into a single automatic pipeline by Shane Hardie.
+Built using portions of original code by [Rempstrom](https://github.com/rempstrom) and [Alexis Brignoni](https://github.com/abrignoni) and unified into a single automatic pipeline by [Shane Hardie](https://github.com/OmegaKyd).
 
 ---
 
@@ -140,7 +140,7 @@ python -m synchronoss_parser.toolbox_gui
 | `User Guide v3.0.0.txt` | Full investigator guide |
 | `Quick Start Guide.txt` | Short Windows setup |
 | `Disclaimer.txt` | Use and verification notice |
-| `LICENSE.txt` | MIT License (© 2026 OmegaKyd) |
+| `LICENSE.txt` | MIT License (© 2020 Alexis Brignoni, © 2024 Rempstrom, © 2026 OmegaKyd) |
 | `../CHANGELOG.md` | Version history (project root, outside this folder) |
 
 ---

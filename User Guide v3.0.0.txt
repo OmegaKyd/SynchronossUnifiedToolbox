@@ -6,10 +6,10 @@ This toolbox helps investigators process Verizon / Synchronoss mobile backup
 returns into organized, reviewable case data (contacts, chat transcripts with
 attachments, media, call logs, DV access logs, unique IPs, and more).
 
-The original Synchronoss Toolbox was created by Rempstrom (GitHub) for a
-specific case and shared to help others. The Synchronoss Unified Toolbox
-builds on that work to combine the separate workflows into one automatic
-end-to-end pipeline.
+Built using portions of original code by Rempstrom and Alexis Brignoni and
+unified into a single automatic pipeline by Shane Hardie (Ω OmegaKyd Ω).
+The original Synchronoss Toolbox was created by Rempstrom for a specific
+case and shared so others facing the same returns might benefit.
 
 
 WHAT’S NEW IN 3.0.0
