@@ -58,7 +58,7 @@ from synchronoss_parser import decrypt_unzip
 from synchronoss_parser import full_pipeline
 from synchronoss_parser.utils import normalize_phone_number, gpg_available
 
-APP_VERSION = "2.2.0"
+APP_VERSION = "3.0.0"
 
 
 def open_in_file_manager(path: Path | str) -> None:
@@ -267,7 +267,7 @@ def build_full_pipeline_ui(parent: tk.Misc) -> None:
             offer_gpg4win_install(parent=frame.winfo_toplevel())
             return
         if not selection_var.get() or not password_var.get() or not output_var.get():
-            status_var.set("Please fill in Selection.zip, Password and Case folder.")
+            status_var.set("Please fill in Selection.zip, Password and Output folder.")
             return
 
         reset_progress()
@@ -323,7 +323,7 @@ def build_full_pipeline_ui(parent: tk.Misc) -> None:
         foreground="gray",
     ).grid(row=1, column=1, sticky="w", padx=5, pady=(0, 6))
 
-    ttk.Label(frame, text="Case folder:").grid(row=2, column=0, sticky="e", padx=(5, 8), pady=5)
+    ttk.Label(frame, text="Output folder:").grid(row=2, column=0, sticky="e", padx=(5, 8), pady=5)
     ttk.Entry(frame, textvariable=output_var).grid(row=2, column=1, sticky="ew", padx=5, pady=5)
     ttk.Button(frame, text="Browse", command=browse_output).grid(row=2, column=2, padx=5, pady=5)
 
@@ -354,7 +354,7 @@ def build_full_pipeline_ui(parent: tk.Misc) -> None:
     def open_output_folder() -> None:
         path = last_result_dir[0]
         if path is None:
-            # Fall back to the case folder the user selected
+            # Fall back to the output folder the user selected
             case = output_var.get().strip()
             if case:
                 path = Path(case) / "parsed_output"
@@ -375,20 +375,22 @@ def build_full_pipeline_ui(parent: tk.Misc) -> None:
     open_btn.grid(row=9, column=1, pady=(0, 8))
     open_btn.grid_remove()
 
-    # Help text
+    # Help text (matches the 9 pipeline stages shown in the status line)
     help_txt = (
-        "Select a case folder. The pipeline creates two subfolders inside it:\n"
+        "Select an output folder. The pipeline creates two subfolders inside it:\n"
         "  original_working/ – intermediate decryption & extraction artifacts\n"
         "  parsed_output/    – final case data (index.html, conversations, contacts, etc.)\n"
         "\n"
-        "Workflow:\n"
+        "Workflow (9 stages):\n"
         "  1. Extract selection.zip\n"
-        "  2. Decrypt the three standard .gpg payloads (main / contacts / quarantine)\n"
-        "  3. Convert contacts → Excel\n"
-        "  4. Recover quarantined media\n"
-        "  5. Collect media & attachments\n"
-        "  6. Render each conversation under parsed_output/conversations/\n"
-        "  7. Write parsed_output/index.html (open this first)"
+        "  2. Discover encrypted payloads (main / contacts / quarantine)\n"
+        "  3. Look for DV Access Log CSVs (optional; next to the zip or inside the return)\n"
+        "  4. Decrypt the .gpg payloads\n"
+        "  5. Extract the main content archive\n"
+        "  6. Convert contacts → Excel\n"
+        "  7. Recover quarantined media\n"
+        "  8. Collect media, attachments & unlinked MMS\n"
+        "  9. Render chat transcripts & write parsed_output/index.html (open this first)"
     )
     ttk.Label(frame, text=help_txt, foreground="gray", justify="left").grid(
         row=10, column=0, columnspan=3, padx=5, pady=5, sticky="w"

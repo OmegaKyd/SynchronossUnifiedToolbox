@@ -165,8 +165,10 @@ def stage_contacts(contacts_txt: Path, final_out: Path) -> Optional[Path]:
         return None
 
 
-def stage_quarantine(quarantine_zip: Path, work_dir: Path, final_out: Path) -> Path:
-    """Decrypt already done; extract the quarantine zip and run the collector."""
+def stage_quarantine(
+    quarantine_zip: Path, work_dir: Path, final_out: Path
+) -> Tuple[Path, List[Dict]]:
+    """Extract quarantine zip, recover media, return (compiled_dir, index_rows)."""
     q_root = work_dir / "03_quarantine_raw"
     q_root.mkdir(parents=True, exist_ok=True)
     logger.info("Extracting quarantined archive → %s", q_root)
@@ -175,26 +177,50 @@ def stage_quarantine(quarantine_zip: Path, work_dir: Path, final_out: Path) -> P
 
     compiled = final_out / "Compiled Quarantine Files"
     compiled.mkdir(parents=True, exist_ok=True)
+    records: List[Dict] = []
 
     try:
         from .collect_quarantined_files import collect_quarantined_files
+        from .utils import md5sum
+
         copied, skipped, total = collect_quarantined_files(q_root, compiled)
         logger.info(
             "Quarantine: converted %d of %d files (%d skipped)",
             len(copied), total, len(skipped),
         )
+        for dest in copied:
+            try:
+                digest = md5sum(dest)
+            except OSError:
+                digest = ""
+            records.append(
+                {
+                    "filename": dest.name,
+                    "detected_type": dest.suffix.lower() or "unknown",
+                    "md5": digest,
+                    "rel_path": f"Compiled Quarantine Files/{dest.name}",
+                }
+            )
+        records.sort(key=lambda r: r.get("filename", "").lower())
     except Exception as e:
         logger.error("Quarantine collection failed: %s", e)
         traceback.print_exc()
-    return compiled
+    return compiled, records
 
 
 def stage_media_and_attachments(
     main_content: Path,
     contacts_xlsx: Optional[Path],
     final_out: Path,
-) -> None:
-    """Run collect_media and collect_attachments if the expected folders exist."""
+) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+    """Run collect_media, collect_attachments, and unlinked-MMS discovery.
+
+    Returns ``(vz_records, unlinked_mms_rows, attachment_records)`` for the case index.
+    """
+    vz_records: List[Dict] = []
+    unlinked_rows: List[Dict] = []
+    attachment_records: List[Dict] = []
+
     # Media (VZMOBILE style)
     vz = None
     for candidate in main_content.rglob("VZMOBILE"):
@@ -209,6 +235,25 @@ def stage_media_and_attachments(
             logfile = media_out / "compiled_media_log" / "compiled_media_log.xlsx"
             records, exif_keys = collect_media(vz, media_out)
             write_excel(records, exif_keys, logfile)
+            # Index-friendly subset + relative link under Compiled Media/
+            # Plus residual EXIF / metadata for the info popover
+            _vz_basic = {"Date", "Device", "File Name", "MD5"}
+            for rec in records:
+                meta = {
+                    str(k): str(v)
+                    for k, v in rec.items()
+                    if k not in _vz_basic and v not in (None, "")
+                }
+                vz_records.append(
+                    {
+                        "upload_date": rec.get("Date", ""),
+                        "device": rec.get("Device", ""),
+                        "filename": rec.get("File Name", ""),
+                        "md5": rec.get("MD5", ""),
+                        "rel_path": f"Compiled Media/{rec.get('File Name', '')}",
+                        "meta": meta,
+                    }
+                )
             logger.info("Collected %d media files from VZMOBILE", len(records))
         except Exception as e:
             logger.error("Media collection failed: %s", e)
@@ -236,6 +281,28 @@ def stage_media_and_attachments(
                 contacts_xlsx=contacts_xlsx,
             )
             write_att_excel(records, exif_keys, att_log)
+            _att_basic = {
+                "File Name", "Original Name", "Date", "Sender", "Recipient", "MD5"
+            }
+            for rec in records:
+                fname = rec.get("File Name", "") or rec.get("Original Name", "")
+                meta = {
+                    str(k): str(v)
+                    for k, v in rec.items()
+                    if k not in _att_basic and v not in (None, "")
+                }
+                attachment_records.append(
+                    {
+                        "filename": fname,
+                        "original_name": rec.get("Original Name", ""),
+                        "date": rec.get("Date", ""),
+                        "sender": rec.get("Sender", ""),
+                        "recipient": rec.get("Recipient", ""),
+                        "md5": rec.get("MD5", ""),
+                        "rel_path": f"Compiled Attachments/{fname}" if fname else "",
+                        "meta": meta,
+                    }
+                )
             logger.info(
                 "Collected %d attachment files into %s (log: %s)",
                 len(records),
@@ -246,6 +313,35 @@ def stage_media_and_attachments(
             logger.error("Attachment collection failed: %s", e)
             traceback.print_exc()
 
+        # Unlinked MMS: present on disk, not referenced by a real-extension token
+        try:
+            from .unlinked_mms import (
+                find_unlinked_mms,
+                materialize_unlinked_mms,
+                write_unlinked_excel,
+            )
+            raw_unlinked = find_unlinked_mms(messages)
+            if raw_unlinked:
+                unlinked_rows = materialize_unlinked_mms(
+                    raw_unlinked,
+                    dest_dir=final_out / "Unlinked MMS",
+                    compiled_attachments=final_out / "Compiled Attachments",
+                )
+                write_unlinked_excel(
+                    unlinked_rows, final_out / "Unlinked MMS.xlsx"
+                )
+                logger.info(
+                    "Unlinked MMS media: %d file(s) not tied to a message token",
+                    len(unlinked_rows),
+                )
+            else:
+                logger.info("Unlinked MMS media: none found")
+        except Exception as e:
+            logger.error("Unlinked MMS discovery failed: %s", e)
+            traceback.print_exc()
+
+    return vz_records, unlinked_rows, attachment_records
+
 
 def stage_render_transcripts(
     main_content: Path,
@@ -253,6 +349,13 @@ def stage_render_transcripts(
     target_number: str,
     final_out: Path,
     target_name: str = "",
+    summary: Optional[Dict] = None,
+    dv_uploads: Optional[List] = None,
+    dv_syncs: Optional[List] = None,
+    vz_records: Optional[List] = None,
+    unlinked_mms: Optional[List] = None,
+    quarantine_records: Optional[List] = None,
+    attachment_records: Optional[List] = None,
 ) -> Path:
     """Render chat transcripts with one folder per conversation.
 
@@ -266,6 +369,26 @@ def stage_render_transcripts(
             break
     if not messages_root:
         logger.warning("No messages folder with CSVs found – skipping transcript rendering")
+        # Still write an index shell so Home / Contacts / DV are available
+        try:
+            from .render_transcripts import write_index, load_contacts_for_html
+            contacts_rows = load_contacts_for_html(
+                str(contacts_xlsx) if contacts_xlsx else None
+            )
+            write_index(
+                final_out,
+                [],
+                summary=summary or {},
+                contacts=contacts_rows,
+                dv_uploads=dv_uploads or [],
+                dv_syncs=dv_syncs or [],
+                vz_records=vz_records or [],
+                unlinked_mms=unlinked_mms or [],
+                quarantine_records=quarantine_records or [],
+                attachment_records=attachment_records or [],
+            )
+        except Exception as e:
+            logger.error("Failed to write index shell: %s", e)
         return final_out / "conversations"
 
     conv_root = final_out / "conversations"
@@ -280,6 +403,7 @@ def stage_render_transcripts(
             format_contact_label,
             build_search_blob,
             write_index,
+            load_contacts_for_html,
             Message,
         )
         from openpyxl import Workbook
@@ -337,13 +461,14 @@ def stage_render_transcripts(
         conv_dir.mkdir(parents=True, exist_ok=True)
 
         out_file = conv_dir / "conversation.html"
-        # Relative path from this conversation file back to the root index
+        # Relative path from this conversation file back to the Conversations
+        # section of the case index (not Home).
         try:
             index_href = os.path.relpath(
                 final_out / "index.html", start=out_file.parent
-            ).replace("\\", "/")
+            ).replace("\\", "/") + "#conversations"
         except Exception:
-            index_href = "../../index.html"
+            index_href = "../../index.html#conversations"
 
         total, with_att = render_thread_html(
             messages_root,
@@ -362,23 +487,14 @@ def stage_render_transcripts(
         index_entries.append((title, rel, total, with_att, search_blob))
         logger.info("Rendered %s → %s (%d messages)", folder_name, out_file, total)
 
-    # Master index at the case root (next to contacts, call log, etc.)
-    write_index(final_out, index_entries)
-    logger.info("Wrote conversation index → %s", final_out / "index.html")
-
-    # Call log – show Name (number) when a contact is known
-    call_log_path = final_out / "Call Log.xlsx"
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Call Log"
-    ws.append(["Date", "Direction", "Sender", "Recipients", "Message ID"])
+    # Build call-log rows once (Excel + index page)
+    call_log_rows: List[Dict] = []
     for m in call_records:
         if m.date_dt:
             date_str = m.date_dt.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
         else:
             date_str = m.date_raw
         sender_disp = format_contact_label(m.sender, lookup) if m.sender else m.sender
-        # Recipients may be semicolon-separated
         if m.recipients:
             recip_disp = "; ".join(
                 format_contact_label(p.strip(), lookup)
@@ -387,7 +503,50 @@ def stage_render_transcripts(
             )
         else:
             recip_disp = m.recipients
-        ws.append([date_str, m.direction, sender_disp, recip_disp, m.message_id])
+        call_log_rows.append(
+            {
+                "date": date_str,
+                "direction": m.direction,
+                "sender": sender_disp,
+                "recipients": recip_disp,
+                "message_id": m.message_id,
+            }
+        )
+
+    # Master index (Home / Conversations / Contacts / Call Logs / DV)
+    contacts_rows = load_contacts_for_html(
+        str(contacts_xlsx) if contacts_xlsx else None
+    )
+    write_index(
+        final_out,
+        index_entries,
+        summary=summary or {},
+        contacts=contacts_rows,
+        call_logs=call_log_rows,
+        dv_uploads=dv_uploads or [],
+        dv_syncs=dv_syncs or [],
+        vz_records=vz_records or [],
+        unlinked_mms=unlinked_mms or [],
+        quarantine_records=quarantine_records or [],
+        attachment_records=attachment_records or [],
+    )
+    logger.info("Wrote case index → %s", final_out / "index.html")
+
+    call_log_path = final_out / "Call Log.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Call Log"
+    ws.append(["Date", "Direction", "Sender", "Recipients", "Message ID"])
+    for row in call_log_rows:
+        ws.append(
+            [
+                row["date"],
+                row["direction"],
+                row["sender"],
+                row["recipients"],
+                row["message_id"],
+            ]
+        )
     wb.save(call_log_path)
     logger.info("Wrote call log → %s", call_log_path)
 
@@ -401,14 +560,21 @@ def write_summary(
     payloads: Dict[str, Path],
     started: datetime,
     target_name: str = "",
-) -> Path:
-    """Write a short processing_summary.txt for the case folder."""
-    summary = final_out / "processing_summary.txt"
+    dv_upload_count: int = 0,
+    dv_sync_count: int = 0,
+    dv_files: Optional[List[Path]] = None,
+) -> Tuple[Path, Dict[str, str]]:
+    """Write processing_summary.txt and return (path, summary_dict for index.html)."""
+    finished = datetime.now()
+    summary_path = final_out / "processing_summary.txt"
+    payload_names = ", ".join(f"{k}={p.name}" for k, p in payloads.items()) or "(none)"
+    dv_names = ", ".join(p.name for p in (dv_files or [])) or "(none)"
+
     lines = [
         "Synchronoss Unified Pipeline – Processing Summary",
         "=" * 50,
         f"Started          : {started.isoformat(timespec='seconds')}",
-        f"Finished         : {datetime.now().isoformat(timespec='seconds')}",
+        f"Finished         : {finished.isoformat(timespec='seconds')}",
         f"Input archive    : {selection_zip}",
         f"Owner phone      : {target}",
         f"Owner name       : {target_name or '(not supplied)'}",
@@ -421,15 +587,23 @@ def write_summary(
         lines.append(f"  {k:12s}: {p.name}")
     lines += [
         "",
+        f"DV Access Log files: {dv_names}",
+        f"  Upload events  : {dv_upload_count}",
+        f"  Sync events    : {dv_sync_count}",
+        "",
         "Case root layout:",
         "  original_working/       – intermediate decryption & extraction artifacts",
         "  parsed_output/          – final organized case data (this folder)",
         "",
         "Inside parsed_output/:",
-        "  index.html              – master list of all conversations (open this first)",
+        "  index.html              – case index (Home / Conversations / Contacts / Call Logs /",
+        "                            Unlinked MMS / VZMOBILE / DV Access Logs)",
         "  conversations/          – one folder per chat thread",
         "  contacts.xlsx           – converted contact list",
         "  Call Log.xlsx           – voice calls with names",
+        "  Unlinked MMS.xlsx       – MMS folder media not tied to a message token",
+        "  Unlinked MMS/           – copies of those files (when not already in Compiled Attachments)",
+        "  DV Access Logs.xlsx     – upload & sync events (when DV CSVs present)",
         "  Compiled Media/         – media from VZMOBILE (if present)",
         "  Compiled Attachments/   – MMS/RCS attachments (if present)",
         "  Compiled Quarantine Files/ – recovered quarantined media",
@@ -439,9 +613,25 @@ def write_summary(
         "    for chain-of-custody review (same parent folder as parsed_output/).",
         "  • Each conversation folder contains conversation.html plus any",
         "    relative links to original attachments.",
+        "  • DV Access Log CSVs are discovered next to selection.zip and inside",
+        "    the extracted return (filename pattern: *Dv Access logs*.csv).",
     ]
-    summary.write_text("\n".join(lines), encoding="utf-8")
-    return summary
+    summary_path.write_text("\n".join(lines), encoding="utf-8")
+
+    summary_dict: Dict[str, str] = {
+        "started": started.isoformat(timespec="seconds"),
+        "finished": finished.isoformat(timespec="seconds"),
+        "input_archive": str(selection_zip),
+        "output_folder": str(final_out),
+        "owner_phone": target or "",
+        "owner_name": target_name or "",
+        "payloads": payload_names,
+        "notes": (
+            f"DV log files: {dv_names}\n"
+            f"DV uploads: {dv_upload_count}  |  DV sync events: {dv_sync_count}"
+        ),
+    }
+    return summary_path, summary_dict
 
 
 # ---------------------------------------------------------------------------
@@ -521,10 +711,10 @@ def run_pipeline(
         shutil.rmtree(work_dir, ignore_errors=True)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    status("1/8  Extracting outer selection.zip …")
+    status("1/9  Extracting outer selection.zip …")
     extracted = stage_extract_outer(selection_zip, work_dir)
 
-    status("2/8  Discovering encrypted payloads …")
+    status("2/9  Discovering encrypted payloads …")
     payloads = discover_payloads(extracted)
     if not payloads:
         raise RuntimeError(
@@ -544,44 +734,122 @@ def run_pipeline(
     if target_name:
         status(f"     Owner name: {target_name}")
 
-    status("3/8  Decrypting payloads (this can take a long time for large files) …")
+    # DV Access Logs live alongside selection.zip and/or inside the extracted return
+    status("3/9  Looking for DV Access Log CSVs …")
+    dv_uploads: List = []
+    dv_syncs: List = []
+    dv_files: List[Path] = []
+    try:
+        from .dv_logs import discover_dv_log_files, parse_all_dv_logs, write_dv_excel
+
+        search_roots = [
+            selection_zip.parent,  # files placed next to selection.zip
+            extracted,
+            case_root,
+        ]
+        dv_files = discover_dv_log_files(*search_roots)
+        if dv_files:
+            status(f"     Found {len(dv_files)} DV log file(s): "
+                   + ", ".join(p.name for p in dv_files))
+            dv_uploads, dv_syncs = parse_all_dv_logs(dv_files)
+            write_dv_excel(
+                dv_uploads, dv_syncs, output_dir / "DV Access Logs.xlsx"
+            )
+            status(
+                f"     Parsed {len(dv_uploads)} upload events, "
+                f"{len(dv_syncs)} sync events"
+            )
+        else:
+            status("     No DV Access Log CSVs found (optional)")
+    except Exception as e:
+        logger.error("DV Access Log processing failed: %s", e)
+        traceback.print_exc()
+
+    status("4/9  Decrypting payloads (this can take a long time for large files) …")
     decrypted = stage_decrypt_payloads(payloads, passphrase, work_dir)
 
     main_content: Optional[Path] = None
     if "main" in decrypted:
-        status("4/8  Extracting main content archive …")
+        status("5/9  Extracting main content archive …")
         main_content = stage_extract_main(decrypted["main"], work_dir)
     else:
-        status("4/8  No main content zip found – skipping")
+        status("5/9  No main content zip found – skipping")
 
     contacts_xlsx: Optional[Path] = None
     if "contacts" in decrypted:
-        status("5/8  Converting contacts to Excel …")
+        status("6/9  Converting contacts to Excel …")
         contacts_xlsx = stage_contacts(decrypted["contacts"], output_dir)
     else:
-        status("5/8  No contacts file found – skipping")
+        status("6/9  No contacts file found – skipping")
 
+    quarantine_records: List = []
     if "quarantine" in decrypted:
-        status("6/8  Processing quarantined media …")
-        stage_quarantine(decrypted["quarantine"], work_dir, output_dir)
-    else:
-        status("6/8  No quarantine archive found – skipping")
-
-    if main_content:
-        status("7/8  Collecting media & message attachments …")
-        stage_media_and_attachments(main_content, contacts_xlsx, output_dir)
-
-        status("8/8  Rendering chat transcripts (one folder per conversation) …")
-        stage_render_transcripts(
-            main_content, contacts_xlsx, target, output_dir, target_name=target_name
+        status("7/9  Processing quarantined media …")
+        _, quarantine_records = stage_quarantine(
+            decrypted["quarantine"], work_dir, output_dir
         )
     else:
-        status("7–8/8  Skipped media/transcript stages (no main content)")
+        status("7/9  No quarantine archive found – skipping")
 
-    summary = write_summary(
-        output_dir, selection_zip, target, payloads, started, target_name=target_name
+    # Build summary dict early so the index can show it even if render fails
+    summary_path, summary_dict = write_summary(
+        output_dir,
+        selection_zip,
+        target,
+        payloads,
+        started,
+        target_name=target_name,
+        dv_upload_count=len(dv_uploads),
+        dv_sync_count=len(dv_syncs),
+        dv_files=dv_files,
     )
-    status(f"Done. Summary written to {summary}")
+
+    vz_records: List = []
+    unlinked_mms: List = []
+    attachment_records: List = []
+    if main_content:
+        status("8/9  Collecting media, attachments & unlinked MMS …")
+        vz_records, unlinked_mms, attachment_records = stage_media_and_attachments(
+            main_content, contacts_xlsx, output_dir
+        )
+
+        status("9/9  Rendering chat transcripts & case index …")
+        stage_render_transcripts(
+            main_content,
+            contacts_xlsx,
+            target,
+            output_dir,
+            target_name=target_name,
+            summary=summary_dict,
+            dv_uploads=dv_uploads,
+            dv_syncs=dv_syncs,
+            vz_records=vz_records,
+            unlinked_mms=unlinked_mms,
+            quarantine_records=quarantine_records,
+            attachment_records=attachment_records,
+        )
+    else:
+        status("8–9/9  Skipped media/transcript stages (no main content)")
+        # Still produce an index with Home / Contacts / DV / Quarantine
+        try:
+            from .render_transcripts import write_index, load_contacts_for_html
+            contacts_rows = load_contacts_for_html(
+                str(contacts_xlsx) if contacts_xlsx else None
+            )
+            write_index(
+                output_dir,
+                [],
+                summary=summary_dict,
+                contacts=contacts_rows,
+                dv_uploads=dv_uploads,
+                dv_syncs=dv_syncs,
+                quarantine_records=quarantine_records,
+            )
+            status(f"     Wrote index shell → {output_dir / 'index.html'}")
+        except Exception as e:
+            logger.error("Failed to write index: %s", e)
+
+    status(f"Done. Summary written to {summary_path}")
 
     if not keep_work_dir:
         shutil.rmtree(work_dir, ignore_errors=True)
