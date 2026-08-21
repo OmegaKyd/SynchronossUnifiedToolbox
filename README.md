@@ -1,12 +1,14 @@
 # Synchronoss Unified Toolbox
 
-**Version 2.2.0**
+**Version 3.0.0**
 
 Organize Verizon / Synchronoss mobile backup returns into reviewable case data:
-contacts, chat transcripts with attachments, media, call logs, and more.
+contacts, chat transcripts with attachments, media, call logs, DV access logs,
+unique IPs, and more.
 
-Built on the original Synchronoss Toolbox by [Rempstrom](https://github.com)
-and unified into a single automatic pipeline by **Ω OmegaKyd Ω**.
+Built using portions of original code by [Rempstrom](https://github.com) and 
+[Alexis Brignoni](https://github.com/abrignoni) and unified into a single 
+automatic pipeline by [Shane Hardie](https://github.com/OmegaKyd).  
 
 ---
 
@@ -19,16 +21,17 @@ You provide:
 3. A **case folder** to write into  
 4. Optionally, the account **Owner name**
 
-The toolbox then:
+The toolbox then runs **9 stages**:
 
-- Extracts `selection.zip`
-- Decrypts the standard payloads (`*.zip.gpg`, `*-contacts.txt.gpg`, `*-quarantined.zip.gpg`)
-- Converts contacts → Excel
-- Recovers quarantined media
-- Collects media and message attachments (original filenames preserved)
-- Renders **each chat** into its own folder under `conversations/`
-- Writes **`index.html`** (searchable across message content)
-- Builds a named **Call Log** and a **processing summary**
+1. Extract `selection.zip`
+2. Discover encrypted payloads (main / contacts / quarantine)
+3. Look for DV Access Log CSVs (optional)
+4. Decrypt the `.gpg` payloads
+5. Extract the main content archive
+6. Convert contacts → Excel
+7. Recover quarantined media
+8. Collect media, attachments & unlinked MMS
+9. Render chat transcripts and write **`index.html`**
 
 Owner phone number is **auto-detected** from encrypted filenames.
 
@@ -48,7 +51,7 @@ The GUI can offer the winget install and restart the app if `gpg` is missing.
 
 ## Quick start
 
-1. Put this project folder somewhere short (e.g. `C:\Tools\Synchronoss-Toolbox-Unified`).
+1. Put this project folder somewhere short (e.g. `C:\Tools\Synchronoss-Unified-Toolbox`).
 2. Install dependencies:
 
 ```bat
@@ -81,11 +84,13 @@ Run_Toolbox_GUI.bat
 CaseFolder/                         ← path you select
   original_working/                 ← intermediate decryption / extraction
   parsed_output/                    ← final case data
-    index.html                      ← open this first
+    index.html                      ← case dashboard (nav sections below)
     conversations/                  ← one folder per chat
       <Contact>/conversation.html
     contacts.xlsx
     Call Log.xlsx
+    Unlinked MMS.xlsx / Unlinked MMS/
+    DV Access Logs.xlsx             ← when DV CSVs are present
     Compiled Media/                 ← if present in the return
     Compiled Attachments/
     Compiled Quarantine Files/
@@ -94,12 +99,19 @@ CaseFolder/                         ← path you select
 
 ---
 
-## Transcripts (browser)
+## Index (browser)
 
-- **Index search** — matches chat titles *and* message bodies  
-- **Attachments only** — filter messages that have attachments  
-- **Print** — chat header on page 1; footer with chat name (left) and page numbers (right). Turn off browser “Headers and footers” to hide the file path.  
-- Contact labels show **Name (number)** when known  
+Open `parsed_output/index.html` offline. Left navigation includes:
+
+- **Home** — summary and counts  
+- **Call Logs** — text + Direction/Date filters  
+- **Contacts** — filterable table  
+- **Conversations** — search titles and message bodies  
+- **Compiled Attachments** / **Unlinked MMS** / **VZMOBILE** / **Quarantine** — previews, filters; ⓘ metadata where available  
+- **DV Access Logs** — uploads & sync events (header tooltips for field meanings)  
+- **DV Unique IPs** — user IPs with first/last seen  
+
+Nav items show record counts. Filter bars show live **xx of xxx displayed**.
 
 ---
 
@@ -115,7 +127,7 @@ python -m synchronoss_parser.full_pipeline ^
 
 `--output` is the **case root** (creates `original_working/` and `parsed_output/` inside it).
 
-Individual modules remain available for advanced use (`collect_media`, `render_transcripts`, etc.). The **GUI is the supported path** for full case processing.
+Individual modules remain available for advanced use. The **GUI is the supported path** for full case processing.
 
 ```bat
 python -m synchronoss_parser.toolbox_gui
@@ -127,7 +139,8 @@ python -m synchronoss_parser.toolbox_gui
 
 | File | Purpose |
 |------|---------|
-| `User Guide v2.2.0.txt` | Full investigator guide |
+| `User Guide v3.0.0.txt` | Full investigator guide |
+| `Quick Start Guide.txt` | Short Windows setup |
 | `Disclaimer.txt` | Use and verification notice |
 | `LICENSE.txt` | MIT License (© 2026 OmegaKyd) |
 | `../CHANGELOG.md` | Version history (project root, outside this folder) |
@@ -150,11 +163,3 @@ Produces a windowed executable under `dist/` (no console). Requires GPG4Win stil
 ```bat
 pytest
 ```
-
----
-
-## Disclaimer
-
-This software helps organize and review Synchronoss returns. It does **not** replace investigative judgment. **Trust but verify** against the original data.
-
-See `Disclaimer.txt` and `LICENSE.txt`.
