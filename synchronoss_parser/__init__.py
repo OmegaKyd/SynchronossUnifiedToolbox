@@ -1,1 +1,0 @@
-"""Synchronoss Parser package."""
