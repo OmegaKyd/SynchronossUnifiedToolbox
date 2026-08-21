@@ -30,4 +30,4 @@ build-exe = "synchronoss_parser.build_exe:main"
 packages = ["synchronoss_parser"]
 
 [tool.setuptools.package-data]
-"synchronoss_parser" = ["*.spec"]
+"synchronoss_parser" = ["*.spec", "app_icon.ico", "app_icon.png", "app_icon_32.png", "app_icon_64.png"]

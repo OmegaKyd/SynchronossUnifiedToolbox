@@ -1017,25 +1017,70 @@ def build_decrypt_unzip_tab(nb: ttk.Notebook) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _icon_base_dir() -> Path:
+    """Directory that holds app_icon.* (package dir, or PyInstaller _MEIPASS)."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent
+
+
 def _set_window_icon(root: tk.Tk) -> None:
-    """Replace the default Tcl feather with the Omega app icon when available."""
-    base = Path(__file__).resolve().parent
+    """Replace the default Tcl feather with the Omega app icon when available.
+
+    On Windows, ``iconbitmap`` (.ico) is required for the title-bar icon.
+    ``iconphoto`` is also set (PNG) for broader window-manager support.
+    Works for source runs and PyInstaller one-file builds (icons under _MEIPASS).
+    Failures are silent so a missing icon never blocks startup.
+    """
+    base = _icon_base_dir()
     ico = base / "app_icon.ico"
-    png = base / "app_icon.png"
-    try:
-        if sys.platform.startswith("win") and ico.is_file():
-            root.iconbitmap(default=str(ico))
-            return
-    except Exception:
-        pass
-    try:
-        if png.is_file():
-            # Keep a reference so Tk does not garbage-collect the image
-            img = tk.PhotoImage(file=str(png))
-            root.iconphoto(True, img)
-            root._app_icon_image = img  # type: ignore[attr-defined]
-    except Exception:
-        pass
+    # Prefer a modest PNG for Tk PhotoImage (large PNGs fail on some Tcl builds)
+    png_candidates = [
+        base / "app_icon_64.png",
+        base / "app_icon_32.png",
+        base / "app_icon.png",
+    ]
+
+    # Windows title bar / taskbar: native .ico
+    if sys.platform.startswith("win") and ico.is_file():
+        try:
+            root.iconbitmap(default=str(ico.resolve()))
+        except Exception:
+            try:
+                root.iconbitmap(str(ico.resolve()))
+            except Exception:
+                pass
+
+    # All platforms: iconphoto from PNG (and as a Windows supplement)
+    photo = None
+    for png in png_candidates:
+        if not png.is_file():
+            continue
+        try:
+            photo = tk.PhotoImage(file=str(png.resolve()))
+            break
+        except Exception:
+            photo = None
+    if photo is None:
+        # Pillow fallback (handles formats / sizes Tk PhotoImage may reject)
+        try:
+            from PIL import Image, ImageTk
+
+            src = next((p for p in png_candidates if p.is_file()), None)
+            if src is None and ico.is_file():
+                src = ico
+            if src is not None:
+                im = Image.open(src).convert("RGBA")
+                im.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(im)
+        except Exception:
+            photo = None
+    if photo is not None:
+        try:
+            root.iconphoto(True, photo)
+            root._app_icon_image = photo  # type: ignore[attr-defined]  # prevent GC
+        except Exception:
+            pass
 
 
 def main() -> None:  # pragma: no cover - GUI entry point
